@@ -128,28 +128,43 @@ def _build_webhook_text(payload: Dict[str, Any]) -> Tuple[str, str]:
 
     body_lines: List[str] = []
     if sname:
-        body_lines.append(f"策略: {sname}")
+        body_lines.append(f"策略: {sname}\n")
     if sym:
-        body_lines.append(f"标的: {sym}")
+        body_lines.append(f"标的: {sym}\n")
     if stype:
-        body_lines.append(f"信号: {stype}")
+        s = "未知"
+        if stype == "open_long":
+            s = "开多"
+        elif stype == "open_short":
+            s = "开空"
+        elif stype == "close_long":
+            s = "平多"
+        elif stype == "close_short":
+            s = "平空"
+        body_lines.append(f"信号: {"多" if stype =='long' else "做空"}\n")
     if side:
-        body_lines.append(f"方向: {side}")
+        body_lines.append(f"方向: {"做多" if side =='long' else "做空"}\n")
     try:
         ref_price = float(order.get('ref_price') or 0)
         if ref_price > 0:
-            body_lines.append(f"价格: {_fmt_float(ref_price)}")
+            body_lines.append(f"价格: {_fmt_float(ref_price)}\n")
     except Exception:
         pass
     try:
         stake = float(order.get('stake_amount') or 0)
         if stake > 0:
-            body_lines.append(f"金额: {_fmt_float(stake)}")
+            body_lines.append(f"金额: {_fmt_float(stake)}\n")
     except Exception:
         pass
-    ts_iso = str(p.get('timestamp_iso') or '').strip()
-    if ts_iso:
-        body_lines.append(f"时间: {ts_iso}")
+    ts_disp = str(p.get('timestamp_display') or p.get('timestamp_iso') or '').strip()
+    if ts_disp:
+        if 'T' in ts_disp:
+            try:
+                dt = datetime.fromisoformat(ts_disp)
+                ts_disp = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+        body_lines.append(f"时间: {ts_disp}\n")
 
     if not body_lines:
         body_lines.append(_shorten(json.dumps(p, ensure_ascii=False), 800))
@@ -372,13 +387,18 @@ def _utc_ts_to_user_display(now: int, user_timezone: str) -> Tuple[str, str, str
     """Return (utc_iso, display_local_str, label_for_plaintext)."""
     iso = datetime.fromtimestamp(int(now), tz=timezone.utc).isoformat()
     utz = (user_timezone or "").strip()
+    
+    # Format a clean default format for fallback
+    utc_dt = datetime.fromtimestamp(int(now), tz=timezone.utc)
+    default_disp = utc_dt.strftime("%Y-%m-%d %H:%M:%S")
+    
     if not utz:
-        return iso, iso, "Time (UTC)"
+        return iso, default_disp, "Time (UTC)"
     try:
         dt = datetime.fromtimestamp(int(now), tz=timezone.utc).astimezone(ZoneInfo(utz))
         return iso, dt.strftime("%Y-%m-%d %H:%M:%S"), f"Time ({utz})"
     except Exception:
-        return iso, iso, "Time (UTC)"
+        return iso, default_disp, "Time (UTC)"
 
 
 def _fmt_float(value: Any, *, max_decimals: int = 10) -> str:
